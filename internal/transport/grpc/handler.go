@@ -23,7 +23,7 @@ func NewHandler(svc *task.Service, uc userpb.UserServiceClient) *Handler {
 func (h *Handler) CreateTask(ctx context.Context, req *taskpb.CreateTaskRequest) (*taskpb.CreateTaskResponse, error) {
 	userId := req.GetUserId()
 
-	_, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: userId})
+	userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: userId})
 	if err != nil {
 		return nil, fmt.Errorf("user %d not found: %w", userId, err)
 	}
@@ -31,7 +31,7 @@ func (h *Handler) CreateTask(ctx context.Context, req *taskpb.CreateTaskRequest)
 	t := &task.Task{
 		Task:   req.GetTitle(),
 		UserID: uint(userId),
-		IsDone: false, // Новая задача по умолчанию не выполнена
+		IsDone: false,
 	}
 	if err := h.svc.CreateTask(t); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
@@ -42,6 +42,7 @@ func (h *Handler) CreateTask(ctx context.Context, req *taskpb.CreateTaskRequest)
 			Title:  t.Task,
 			IsDone: t.IsDone,
 			UserId: uint32(t.UserID),
+			User:   userResp.User, // userResp.User типа *userpb.User
 		},
 	}, nil
 }
@@ -51,11 +52,20 @@ func (h *Handler) GetTask(ctx context.Context, req *taskpb.TaskRequest) (*taskpb
 	if err := h.svc.GetTaskByID(strconv.Itoa(int(req.GetId())), t); err != nil {
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
+
+	userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: uint32(t.UserID)})
+	if err != nil {
+		return nil, fmt.Errorf("user %d not found: %w", t.UserID, err)
+	}
+
 	return &taskpb.TaskResponse{
-		Id:     uint32(t.ID),
-		Title:  t.Task,
-		IsDone: t.IsDone,
-		UserId: uint32(t.UserID),
+		Task: &taskpb.Task{
+			Id:     uint32(t.ID),
+			Title:  t.Task,
+			IsDone: t.IsDone,
+			UserId: uint32(t.UserID),
+			User:   userResp.User, // userResp.User типа *userpb.User
+		},
 	}, nil
 }
 
@@ -66,11 +76,17 @@ func (h *Handler) ListTasks(ctx context.Context, req *taskpb.ListTasksRequest) (
 	}
 	var pbTasks []*taskpb.Task
 	for _, t := range tasks {
+		userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: uint32(t.UserID)})
+		var user *userpb.User
+		if err == nil {
+			user = userResp.User
+		}
 		pbTasks = append(pbTasks, &taskpb.Task{
 			Id:     uint32(t.ID),
 			Title:  t.Task,
 			IsDone: t.IsDone,
 			UserId: uint32(t.UserID),
+			User:   user, // user типа *userpb.User
 		})
 	}
 	return &taskpb.ListTasksResponse{
@@ -84,6 +100,11 @@ func (h *Handler) ListTasksByUser(ctx context.Context, req *taskpb.ListTasksByUs
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tasks for user: %w", err)
 	}
+	userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: userId})
+	var user *userpb.User
+	if err == nil {
+		user = userResp.User
+	}
 	var pbTasks []*taskpb.Task
 	for _, t := range tasks {
 		pbTasks = append(pbTasks, &taskpb.Task{
@@ -91,6 +112,7 @@ func (h *Handler) ListTasksByUser(ctx context.Context, req *taskpb.ListTasksByUs
 			Title:  t.Task,
 			IsDone: t.IsDone,
 			UserId: uint32(t.UserID),
+			User:   user, // user типа *userpb.User
 		})
 	}
 	return &taskpb.ListTasksByUserResponse{
@@ -108,15 +130,22 @@ func (h *Handler) UpdateTask(ctx context.Context, req *taskpb.UpdateTaskRequest)
 	if err := h.svc.UpdateTask(strconv.Itoa(int(req.GetId())), t); err != nil {
 		return nil, fmt.Errorf("failed to update task: %w", err)
 	}
+	userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: uint32(t.UserID)})
+	var user *userpb.User
+	if err == nil {
+		user = userResp.User
+	}
 	return &taskpb.UpdateTaskResponse{
 		Task: &taskpb.Task{
 			Id:     uint32(t.ID),
 			Title:  t.Task,
 			IsDone: t.IsDone,
 			UserId: uint32(t.UserID),
+			User:   user, // user типа *userpb.User
 		},
 	}, nil
 }
+
 func (h *Handler) DeleteTask(ctx context.Context, req *taskpb.DeleteTaskRequest) (*taskpb.DeleteTaskResponse, error) {
 	if err := h.svc.DeleteTask(strconv.Itoa(int(req.GetId()))); err != nil {
 		return nil, fmt.Errorf("failed to delete task: %w", err)
