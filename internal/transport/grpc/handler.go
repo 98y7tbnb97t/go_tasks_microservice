@@ -100,19 +100,19 @@ func (h *Handler) ListTasksByUser(ctx context.Context, req *taskpb.ListTasksByUs
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tasks for user: %w", err)
 	}
-	userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: userId})
-	var user *userpb.User
-	if err == nil {
-		user = userResp.User
-	}
 	var pbTasks []*taskpb.Task
 	for _, t := range tasks {
+		userResp, err := h.userClient.GetUser(ctx, &userpb.UserRequest{Id: uint32(t.UserID)})
+		var user *userpb.User
+		if err == nil {
+			user = userResp.User
+		}
 		pbTasks = append(pbTasks, &taskpb.Task{
 			Id:     uint32(t.ID),
 			Title:  t.Task,
 			IsDone: t.IsDone,
 			UserId: uint32(t.UserID),
-			User:   user, // user типа *userpb.User
+			User:   user,
 		})
 	}
 	return &taskpb.ListTasksByUserResponse{
